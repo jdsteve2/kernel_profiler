@@ -38,24 +38,42 @@ def find_cl_device_candidates(platform_name, device_name):
 
 class KernelStatOptions:
     WALL_TIME = "wall_time"
+    MEMORY_ACCESS = "memory_access"
+    ARITHMETIC_OPS = "arithmetic_ops"
+    SYNCHRONIZATION = "synchronization"
+    GRID_SIZES = "grid_sizes"
     # TODO add other stat options here
 
 
 class KernelProfiler(object):
-
-    N_WARMUP_TIME_TRIALS = 4
-    N_TIME_TRIALS = 64
 
     def __init__(
                 self,
                 platform_name=None,
                 device_name=None,
                 interactive=False,
+                n_warmup_time_trials=4,
+                n_time_trials=64,
+                evaluate_polys=True,
+                subgroup_size=32,
+                count_redundant_work=True,
+                count_madds=True,
+                count_within_subscripts=False,
                 ):
+
         self.ctx_cache = {}
         self.platform_name = platform_name
         self.device_name = device_name
         self.interactive = interactive
+
+        self.n_warmup_time_trials = n_warmup_time_trials
+        self.n_time_trials = n_time_trials
+
+        self.evaluate_polys = evaluate_polys
+        self.subgroup_size = subgroup_size
+        self.count_redundant_work = count_redundant_work
+        self.count_madds = count_madds
+        self.count_within_subscripts = count_within_subscripts
 
     def get_cl_context(self):
 
@@ -70,8 +88,8 @@ class KernelProfiler(object):
             try:
                 return self.ctx_cache[cache_key]
             except KeyError:
-                ctx = cl.Context(
-                        [find_cl_device_candidates(self.platform_name, self.device_name)[-1]]
+                ctx = cl.Context([find_cl_device_candidates(
+                        self.platform_name, self.device_name)[-1]]
                         )
                 self.ctx_cache[cache_key] = ctx
                 return ctx
@@ -84,9 +102,9 @@ class KernelProfiler(object):
                 n_trials=None,
                 ):
 
-        n_warmup_trials = self.N_WARMUP_TIME_TRIALS if n_warmup_trials is None \
+        n_warmup_trials = self.n_warmup_time_trials if not n_warmup_trials \
                 else n_warmup_trials
-        n_trials = self.N_TIME_TRIALS if n_trials is None else n_trials
+        n_trials = self.n_time_trials if not n_trials else n_trials
 
         ctx = self.get_cl_context()
         queue = cl.CommandQueue(ctx)
@@ -109,22 +127,154 @@ class KernelProfiler(object):
         import numpy as np
         return np.average(wtimes[n_warmup_trials:])
 
-    def get_stats(
-            self,
+    def get_mem_access_stats(
+                self,
+                knl,
+                evaluate_polys=None,
+                param_dict=None,
+                count_redundant_work=None,
+                subgroup_size=None,
+                ):
+
+        from loopy.statistics import get_mem_access_map
+
+        # if no value passed, set to defaults
+        evaluate_polys = self.evaluate_polys \
+                if not evaluate_polys else evaluate_polys
+        count_redundant_work = self.count_redundant_work \
+                if not count_redundant_work else count_redundant_work
+        subgroup_size = self.subgroup_size if not subgroup_size else subgroup_size
+
+        mem_access_map = get_mem_access_map(
+                knl,
+                count_redundant_work=count_redundant_work,
+                subgroup_size=subgroup_size,
+                )
+
+        if evaluate_polys:
+            if param_dict is None:
+                raise ValueError("Cannont evaluate polynomials without param_dict.")
+            return mem_access_map.eval(param_dict)
+        else:
+            return mem_access_map
+
+    def get_op_stats(
+                self,
+                knl,
+                evaluate_polys=None,
+                param_dict=None,
+                count_redundant_work=None,
+                subgroup_size=None,
+                count_madds=None,
+                count_within_subscripts=None,
+                ):
+
+        from loopy.statistics import get_op_map
+
+        # if no value passed, set to defaults
+        evaluate_polys = self.evaluate_polys \
+                if not evaluate_polys else evaluate_polys
+        count_redundant_work = self.count_redundant_work \
+                if not count_redundant_work else count_redundant_work
+        subgroup_size = self.subgroup_size if not subgroup_size else subgroup_size
+        count_madds = self.count_madds if not count_madds else count_madds
+        count_within_subscripts = self.count_within_subscripts \
+                if not count_within_subscripts else count_within_subscripts
+
+        op_map = get_op_map(
             knl,
-            stat_options=[],
-            param_dict=None,
-            n_warmup_wtime_trials=None,
-            n_wtime_trials=None,
-            ):
+            count_redundant_work=count_redundant_work,
+            count_within_subscripts=count_within_subscripts,
+            subgroup_size=subgroup_size,
+            count_madds=count_madds,
+            )
+
+        if evaluate_polys:
+            if param_dict is None:
+                raise ValueError("Cannont evaluate polynomials without param_dict.")
+            return op_map.eval(param_dict)
+        else:
+            return op_map
+
+    def get_synchronization_stats(
+                self,
+                knl,
+                evaluate_polys=None,
+                param_dict=None,
+                subgroup_size=None,
+                ):
+
+        from loopy.statistics import get_synchronization_map
+
+        # if no value passed, set to defaults
+        evaluate_polys = self.evaluate_polys \
+                if not evaluate_polys else evaluate_polys
+        subgroup_size = self.subgroup_size if not subgroup_size else subgroup_size
+
+        sync_map = get_synchronization_map(
+            knl,
+            subgroup_size=subgroup_size,
+            )
+
+        if evaluate_polys:
+            if param_dict is None:
+                raise ValueError("Cannont evaluate polynomials without param_dict.")
+            return sync_map.eval(param_dict)
+        else:
+            return sync_map
+
+    def get_grid_sizes(
+                self,
+                knl,
+                evaluate_polys=None,
+                param_dict=None,
+                ):
+
+        # if no value passed, set to defaults
+        evaluate_polys = self.evaluate_polys \
+                if not evaluate_polys else evaluate_polys
+
+        global_size, local_size = knl.get_grid_size_upper_bounds()
+
+        from islpy import PwQPolynomial
+        gsize_pwqs = []
+        lsize_pwqs = []
+        for gsize in global_size:
+            gsize_pwqs.append(PwQPolynomial.from_pw_aff(gsize))
+        for lsize in local_size:
+            lsize_pwqs.append(PwQPolynomial.from_pw_aff(lsize))
+
+        if evaluate_polys:
+            if param_dict is None:
+                raise ValueError("Cannont evaluate polynomials without param_dict.")
+            return [g.eval_with_dict(param_dict) for g in gsize_pwqs], \
+                   [l.eval_with_dict(param_dict) for l in lsize_pwqs]
+        else:
+            return gsize_pwqs, lsize_pwqs
+
+    def profile(
+                self,
+                knl,
+                stat_options=[],
+                param_dict=None,
+                n_warmup_wtime_trials=None,
+                n_wtime_trials=None,
+                evaluate_polys=True,
+                count_redundant_work=None,
+                subgroup_size=None,
+                count_madds=True,
+                count_within_subscripts=False,
+                ):
 
         stats_found = {}
 
         if KernelStatOptions.WALL_TIME in stat_options:
 
-            n_warmup_wtime_trials = self.N_WARMUP_TIME_TRIALS \
+            # if no value passed, set to defaults
+            #TODO these checks are redundant
+            n_warmup_wtime_trials = self.n_warmup_time_trials \
                     if n_warmup_wtime_trials is None else n_warmup_wtime_trials
-            n_wtime_trials = self.N_TIME_TRIALS \
+            n_wtime_trials = self.n_time_trials \
                     if n_wtime_trials is None else n_wtime_trials
 
             if param_dict is None:
@@ -134,6 +284,69 @@ class KernelProfiler(object):
             stats_found[KernelStatOptions.WALL_TIME] = self.time_kernel(
                     knl, param_dict, n_warmup_wtime_trials, n_wtime_trials)
 
-        # TODO add other stat options here
+        if KernelStatOptions.MEMORY_ACCESS in stat_options:
+            # if no value passed, set to defaults
+            evaluate_polys = self.evaluate_polys \
+                    if not evaluate_polys else evaluate_polys
+            count_redundant_work = self.count_redundant_work \
+                    if not count_redundant_work else count_redundant_work
+            subgroup_size = self.subgroup_size \
+                    if not subgroup_size else subgroup_size
+
+            stats_found[KernelStatOptions.MEMORY_ACCESS] = self.get_mem_access_stats(
+                    knl,
+                    evaluate_polys=evaluate_polys,
+                    param_dict=param_dict,
+                    count_redundant_work=count_redundant_work,
+                    subgroup_size=subgroup_size,
+                    )
+
+        if KernelStatOptions.ARITHMETIC_OPS in stat_options:
+            # if no value passed, set to defaults
+            evaluate_polys = self.evaluate_polys \
+                    if not evaluate_polys else evaluate_polys
+            count_redundant_work = self.count_redundant_work \
+                    if not count_redundant_work else count_redundant_work
+            subgroup_size = self.subgroup_size \
+                    if not subgroup_size else subgroup_size
+            count_madds = self.count_madds if not count_madds else count_madds
+            count_within_subscripts = self.count_within_subscripts \
+                    if not count_within_subscripts else count_within_subscripts
+
+            stats_found[KernelStatOptions.ARITHMETIC_OPS] = self.get_op_stats(
+                    knl,
+                    evaluate_polys=evaluate_polys,
+                    param_dict=param_dict,
+                    count_redundant_work=count_redundant_work,
+                    subgroup_size=subgroup_size,
+                    count_madds=count_madds,
+                    count_within_subscripts=count_within_subscripts,
+                    )
+
+        if KernelStatOptions.SYNCHRONIZATION in stat_options:
+            # if no value passed, set to defaults
+            evaluate_polys = self.evaluate_polys \
+                    if not evaluate_polys else evaluate_polys
+            subgroup_size = self.subgroup_size \
+                    if not subgroup_size else subgroup_size
+
+            stats_found[KernelStatOptions.SYNCHRONIZATION] = \
+                    self.get_synchronization_stats(
+                    knl,
+                    evaluate_polys=evaluate_polys,
+                    param_dict=param_dict,
+                    subgroup_size=subgroup_size,
+                    )
+
+        if KernelStatOptions.GRID_SIZES in stat_options:
+            # if no value passed, set to defaults
+            evaluate_polys = self.evaluate_polys \
+                    if not evaluate_polys else evaluate_polys
+
+            stats_found[KernelStatOptions.GRID_SIZES] = self.get_grid_sizes(
+                    knl,
+                    evaluate_polys=evaluate_polys,
+                    param_dict=param_dict,
+                    )
 
         return stats_found
