@@ -1,7 +1,7 @@
 import loopy as lp
 import numpy as np
 from kernel_profiler import KernelProfiler
-from kernel_profiler import KernelStatOptions as stat_opts
+from kernel_profiler import KernelStatOptions as kso
 
 
 knl = lp.make_kernel(
@@ -23,29 +23,35 @@ knl = lp.split_iname(knl, "k", lsize)
 knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
 knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
 
-n = 512
-m = 256
-ell = 128
+n = 2**10
+m = 2**11
+ell = 2**12
 param_dict = {'n': n, 'm': m, 'ell': ell}
 
 kp = KernelProfiler("NVIDIA", "GEFORCE")
 stats = kp.profile(
         knl,
         [
-            stat_opts.WALL_TIME,
-            stat_opts.MEMORY_ACCESS,
-            stat_opts.ARITHMETIC_OPS,
-            stat_opts.SYNCHRONIZATION,
-            stat_opts.GRID_SIZES,
+            kso.WALL_TIME,
+            kso.MEM_ACCESS_MAP,
+            kso.OP_MAP,
+            kso.SYNC_MAP,
+            kso.GRID_SIZES,
+            kso.FLOP_RATE,
+            kso.MEM_BANDWIDTH,
         ],
-        param_dict=param_dict)
-print("\nWall time:", stats[stat_opts.WALL_TIME], "\n")
-print(lp.stringify_stats_mapping(stats[stat_opts.MEMORY_ACCESS]))
-print(lp.stringify_stats_mapping(stats[stat_opts.ARITHMETIC_OPS]))
-print(lp.stringify_stats_mapping(stats[stat_opts.SYNCHRONIZATION]))
-print(stats[stat_opts.GRID_SIZES], "\n")
+        param_dict=param_dict,
+        evaluate_polys=False,
+        )
+print("\nWall time:", stats[kso.WALL_TIME], "\n")
+print(lp.stringify_stats_mapping(stats[kso.MEM_ACCESS_MAP]))
+print(lp.stringify_stats_mapping(stats[kso.OP_MAP]))
+print(lp.stringify_stats_mapping(stats[kso.SYNC_MAP]))
+print(stats[kso.GRID_SIZES], "\n")
+print(stats[kso.FLOP_RATE], "\n")
+print(stats[kso.MEM_BANDWIDTH], "\n")
 
 interactive_kp = KernelProfiler(interactive=True)
 interactive_stats = interactive_kp.profile(
-        knl, [stat_opts.WALL_TIME], param_dict=param_dict)
-print(interactive_stats[stat_opts.WALL_TIME], "\n")
+        knl, [kso.WALL_TIME], param_dict=param_dict)
+print(interactive_stats[kso.WALL_TIME], "\n")

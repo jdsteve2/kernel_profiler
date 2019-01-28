@@ -38,11 +38,12 @@ def find_cl_device_candidates(platform_name, device_name):
 
 class KernelStatOptions:
     WALL_TIME = "wall_time"
-    MEMORY_ACCESS = "memory_access"
-    ARITHMETIC_OPS = "arithmetic_ops"
-    SYNCHRONIZATION = "synchronization"
+    MEM_ACCESS_MAP = "mem_access_map"
+    OP_MAP = "op_map"
+    SYNC_MAP = "sync_map"
     GRID_SIZES = "grid_sizes"
-    # TODO add other stat options here
+    FLOP_RATE = "flop_rate"
+    MEM_BANDWIDTH = "mem_bandwidth"
 
 
 class KernelProfiler(object):
@@ -244,36 +245,59 @@ class KernelProfiler(object):
             self.count_within_subscripts = count_within_subscripts
 
         stats_found = {}
+        kso = KernelStatOptions
 
-        if KernelStatOptions.WALL_TIME in stat_options:
-            stats_found[KernelStatOptions.WALL_TIME] = self.time_kernel(
+        if kso.WALL_TIME in stat_options or \
+                kso.FLOP_RATE in stat_options or \
+                kso.MEM_BANDWIDTH in stat_options:
+            stats_found[kso.WALL_TIME] = self.time_kernel(
                     knl,
                     param_dict,
                     )
 
-        if KernelStatOptions.MEMORY_ACCESS in stat_options:
-            stats_found[KernelStatOptions.MEMORY_ACCESS] = self.get_mem_access_stats(
+        if kso.MEM_ACCESS_MAP in stat_options or \
+                kso.MEM_BANDWIDTH in stat_options:
+            stats_found[kso.MEM_ACCESS_MAP] = self.get_mem_access_stats(
                     knl,
                     param_dict=param_dict,
                     )
 
-        if KernelStatOptions.ARITHMETIC_OPS in stat_options:
-            stats_found[KernelStatOptions.ARITHMETIC_OPS] = self.get_op_stats(
+        if kso.OP_MAP in stat_options or \
+                kso.FLOP_RATE in stat_options:
+            stats_found[kso.OP_MAP] = self.get_op_stats(
                     knl,
                     param_dict=param_dict,
                     )
 
-        if KernelStatOptions.SYNCHRONIZATION in stat_options:
-            stats_found[KernelStatOptions.SYNCHRONIZATION] = \
+        if kso.SYNC_MAP in stat_options:
+            stats_found[kso.SYNC_MAP] = \
                     self.get_synchronization_stats(
                     knl,
                     param_dict=param_dict,
                     )
 
-        if KernelStatOptions.GRID_SIZES in stat_options:
-            stats_found[KernelStatOptions.GRID_SIZES] = self.get_grid_sizes(
+        if kso.GRID_SIZES in stat_options:
+            stats_found[kso.GRID_SIZES] = self.get_grid_sizes(
                     knl,
                     param_dict=param_dict,
                     )
+
+        if kso.FLOP_RATE in stat_options:
+            import numpy as np
+            float_ops = stats_found[kso.OP_MAP].filter_by(
+                    dtype=[np.float32, np.float64]
+                    ).sum()
+            if not self.evaluate_polys:
+                float_ops = float_ops.eval_with_dict(param_dict)
+            stats_found[kso.FLOP_RATE] = float_ops/stats_found[kso.WALL_TIME]
+
+        if kso.MEM_BANDWIDTH in stat_options:
+            data_moved_bytes = stats_found[kso.MEM_ACCESS_MAP].filter_by(
+                    mtype=["global"]
+                    ).to_bytes().sum()
+            if not self.evaluate_polys:
+                data_moved_bytes = data_moved_bytes.eval_with_dict(param_dict)
+            stats_found[kso.MEM_BANDWIDTH] = \
+                    data_moved_bytes/stats_found[kso.WALL_TIME]
 
         return stats_found
