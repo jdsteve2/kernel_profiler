@@ -25,7 +25,7 @@ knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
 
 n = 2**10
 m = 2**11
-ell = 2**12
+ell = 2**9
 param_dict = {'n': n, 'm': m, 'ell': ell}
 
 kp = KernelProfiler("NVIDIA", "GEFORCE")
@@ -41,7 +41,7 @@ stats = kp.profile(
             kso.MEM_BANDWIDTH,
         ],
         param_dict=param_dict,
-        evaluate_polys=False,
+        evaluate_polys=True,
         )
 print("\nWall time:", stats[kso.WALL_TIME], "\n")
 print(lp.stringify_stats_mapping(stats[kso.MEM_ACCESS_MAP]))
