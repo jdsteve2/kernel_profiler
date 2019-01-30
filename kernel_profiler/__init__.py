@@ -92,6 +92,44 @@ class KernelProfiler(object):
         self.include_kernel_params_in_ptx_filename = \
                 include_kernel_params_in_ptx_filename
 
+    def update_options(
+                self,
+                platform_name=None,
+                device_name=None,
+                interactive=None,
+                n_warmup_wtime_trials=None,
+                n_wtime_trials=None,
+                evaluate_polys=None,
+                count_redundant_work=None,
+                subgroup_size=None,
+                count_madds=None,
+                count_within_subscripts=None,
+                include_kernel_params_in_ptx_filename=None,
+                ):
+        if platform_name is not None:
+            self.platform_name = platform_name
+        if device_name is not None:
+            self.device_name = device_name
+        if interactive is not None:
+            self.interactive = interactive
+        if n_warmup_wtime_trials is not None:
+            self.n_warmup_wtime_trials = n_warmup_wtime_trials
+        if n_wtime_trials is not None:
+            self.n_wtime_trials = n_wtime_trials
+        if evaluate_polys is not None:
+            self.evaluate_polys = evaluate_polys
+        if count_redundant_work is not None:
+            self.count_redundant_work = count_redundant_work
+        if subgroup_size is not None:
+            self.subgroup_size = subgroup_size
+        if count_madds is not None:
+            self.count_madds = count_madds
+        if count_within_subscripts is not None:
+            self.count_within_subscripts = count_within_subscripts
+        if include_kernel_params_in_ptx_filename is not None:
+            self.include_kernel_params_in_ptx_filename = \
+                    include_kernel_params_in_ptx_filename
+
     def get_cl_context(self):
 
         if self.interactive:
@@ -149,6 +187,9 @@ class KernelProfiler(object):
             ):
 
         if self.include_kernel_params_in_ptx_filename:
+            if param_dict is None:
+                raise ValueError("Cannot include kernel params "
+                        "in ptx filename, no param dict passed.")
             write_ptx(
                     self.get_cl_context(),
                     knl,
@@ -252,36 +293,7 @@ class KernelProfiler(object):
                 knl,
                 stat_options=[],
                 param_dict=None,
-                n_warmup_wtime_trials=None,
-                n_wtime_trials=None,
-                evaluate_polys=None,
-                count_redundant_work=None,
-                subgroup_size=None,
-                count_madds=None,
-                count_within_subscripts=None,
-                include_kernel_params_in_ptx_filename=None,
                 ):
-
-        # update instance vars if requested
-        # TODO don't change instance variables, don't allow options changes here,
-        # instead, make a change_profile_options function
-        if n_warmup_wtime_trials is not None:
-            self.n_warmup_wtime_trials = n_warmup_wtime_trials
-        if n_wtime_trials is not None:
-            self.n_wtime_trials = n_wtime_trials
-        if evaluate_polys is not None:
-            self.evaluate_polys = evaluate_polys
-        if count_redundant_work is not None:
-            self.count_redundant_work = count_redundant_work
-        if subgroup_size is not None:
-            self.subgroup_size = subgroup_size
-        if count_madds is not None:
-            self.count_madds = count_madds
-        if count_within_subscripts is not None:
-            self.count_within_subscripts = count_within_subscripts
-        if include_kernel_params_in_ptx_filename is not None:
-            self.include_kernel_params_in_ptx_filename = \
-                    include_kernel_params_in_ptx_filename
 
         stats_found = {}
         kso = KernelStatOptions
