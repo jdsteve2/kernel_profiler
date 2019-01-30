@@ -36,6 +36,17 @@ def find_cl_device_candidates(platform_name, device_name):
     return candidates
 
 
+def write_ptx(ctx, knl, filename=None):
+    cl_program = cl.Program(
+                            ctx, lp.generate_code_v2(knl).device_code()
+                           ).build(options=knl.options.cl_build_options)
+    ptx_src = cl_program.binaries[0]
+    if not filename:
+        filename = "ptx_"+knl.name+".ptx"
+    ptx_src_file = open(filename, 'w')
+    ptx_src_file.write(ptx_src.decode('utf-8', 'ignore'))
+
+
 class KernelStatOptions:
     WALL_TIME = "wall_time"
     MEM_ACCESS_MAP = "mem_access_map"
@@ -44,6 +55,7 @@ class KernelStatOptions:
     GRID_SIZES = "grid_sizes"
     FLOP_RATE = "flop_rate"
     MEM_BANDWIDTH = "mem_bandwidth"
+    SAVE_PTX = "save_ptx"
 
 
 class KernelProfiler(object):
@@ -60,6 +72,7 @@ class KernelProfiler(object):
                 count_redundant_work=True,
                 count_madds=True,
                 count_within_subscripts=False,
+                include_kernel_params_in_ptx_filename=False,
                 ):
 
         self.ctx_cache = {}
@@ -75,6 +88,9 @@ class KernelProfiler(object):
         self.count_redundant_work = count_redundant_work
         self.count_madds = count_madds
         self.count_within_subscripts = count_within_subscripts
+
+        self.include_kernel_params_in_ptx_filename = \
+                include_kernel_params_in_ptx_filename
 
     def get_cl_context(self):
 
@@ -125,6 +141,23 @@ class KernelProfiler(object):
 
         import numpy as np
         return np.average(wtimes[self.n_warmup_time_trials:])
+
+    def save_ptx(
+            self,
+            knl,
+            param_dict=None,
+            ):
+
+        if self.include_kernel_params_in_ptx_filename:
+            write_ptx(
+                    self.get_cl_context(),
+                    knl,
+                    filename="ptx_"+knl.name+"_"+"_".join(
+                        ["%s%d" % (p, v) for p, v in param_dict.items()]
+                        )+".ptx"
+                    )
+        else:
+            write_ptx(self.get_cl_context(), knl)
 
     def get_mem_access_stats(
                 self,
@@ -226,9 +259,12 @@ class KernelProfiler(object):
                 subgroup_size=None,
                 count_madds=None,
                 count_within_subscripts=None,
+                include_kernel_params_in_ptx_filename=None,
                 ):
 
         # update instance vars if requested
+        # TODO don't change instance variables, don't allow options changes here,
+        # instead, make a change_profile_options function
         if n_warmup_wtime_trials is not None:
             self.n_warmup_wtime_trials = n_warmup_wtime_trials
         if n_wtime_trials is not None:
@@ -243,6 +279,9 @@ class KernelProfiler(object):
             self.count_madds = count_madds
         if count_within_subscripts is not None:
             self.count_within_subscripts = count_within_subscripts
+        if include_kernel_params_in_ptx_filename is not None:
+            self.include_kernel_params_in_ptx_filename = \
+                    include_kernel_params_in_ptx_filename
 
         stats_found = {}
         kso = KernelStatOptions
@@ -299,5 +338,8 @@ class KernelProfiler(object):
                 data_moved_bytes = data_moved_bytes.eval_with_dict(param_dict)
             stats_found[kso.MEM_BANDWIDTH] = \
                     data_moved_bytes/stats_found[kso.WALL_TIME]
+
+        if kso.SAVE_PTX in stat_options:
+            self.save_ptx(knl, param_dict)
 
         return stats_found

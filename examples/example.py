@@ -28,7 +28,7 @@ m = 2**11
 ell = 2**9
 param_dict = {'n': n, 'm': m, 'ell': ell}
 
-kp = KernelProfiler("NVIDIA", "GEFORCE")
+kp = KernelProfiler("NVIDIA", "GEFORCE", include_kernel_params_in_ptx_filename=True)
 stats = kp.profile(
         knl,
         [
@@ -39,6 +39,7 @@ stats = kp.profile(
             kso.GRID_SIZES,
             kso.FLOP_RATE,
             kso.MEM_BANDWIDTH,
+            kso.SAVE_PTX,
         ],
         param_dict=param_dict,
         evaluate_polys=True,
