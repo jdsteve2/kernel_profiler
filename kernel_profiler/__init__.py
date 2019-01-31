@@ -133,13 +133,13 @@ class KernelProfiler(object):
 
     def get_cl_context(self):
 
-        if self.interactive:
-            return cl.create_some_context()
+        if self.platform_name is None or self.device_name is None:
+            ctx = cl.create_some_context()
+            self.platform_name = ctx.devices[0].platform.name
+            self.device_name = ctx.devices[0].name
+            self.ctx_cache[(self.platform_name, self.device_name, "ctx")] = ctx
+            return ctx
         else:
-            if self.platform_name is None or self.device_name is None:
-                raise ValueError(
-                        "Wall time requires platform name, and device name.")
-
             cache_key = (self.platform_name, self.device_name, "ctx")
             try:
                 return self.ctx_cache[cache_key]

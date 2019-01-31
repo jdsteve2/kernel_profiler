@@ -30,7 +30,7 @@ param_dict = {'n': n, 'm': m, 'ell': ell}
 
 kp = KernelProfiler(
         #"NVIDIA", "GEFORCE",
-        interactive=True,
+        #"NVIDIA", "K40C",
         evaluate_polys = True,
         include_kernel_params_in_ptx_filename=True,
         )
@@ -59,6 +59,6 @@ print(stats[kso.MEM_BANDWIDTH], "\n")
 
 kp.update_options(evaluate_polys=False)
 
-interactive_stats = kp.profile(
+stats = kp.profile(
         knl, [kso.WALL_TIME], param_dict=param_dict)
-print(interactive_stats[kso.WALL_TIME], "\n")
+print(stats[kso.WALL_TIME], "\n")
