@@ -74,7 +74,9 @@ class KernelProfiler(object):
                 count_madds=True,
                 count_within_subscripts=False,
                 include_kernel_params_in_ptx_filename=False,
+                ptx_filename_suffix="",
                 ):
+        # TODO figure out how to let user specify target w/device
 
         self.ctx_cache = {}
         self.platform_name = platform_name
@@ -92,6 +94,7 @@ class KernelProfiler(object):
 
         self.include_kernel_params_in_ptx_filename = \
                 include_kernel_params_in_ptx_filename
+        self.ptx_filename_suffix = ptx_filename_suffix
 
     def update_options(
                 self,
@@ -106,6 +109,7 @@ class KernelProfiler(object):
                 count_madds=None,
                 count_within_subscripts=None,
                 include_kernel_params_in_ptx_filename=None,
+                ptx_filename_suffix=None,
                 ):
         if platform_name is not None:
             self.platform_name = platform_name
@@ -130,6 +134,8 @@ class KernelProfiler(object):
         if include_kernel_params_in_ptx_filename is not None:
             self.include_kernel_params_in_ptx_filename = \
                     include_kernel_params_in_ptx_filename
+        if ptx_filename_suffix is not None:
+            self.ptx_filename_suffix = ptx_filename_suffix
 
     def get_cl_context(self):
 
@@ -196,7 +202,7 @@ class KernelProfiler(object):
                     knl,
                     filename="ptx_"+knl.name+"_"+"_".join(
                         ["%s%d" % (p, v) for p, v in param_dict.items()]
-                        )+".ptx"
+                        )+self.ptx_filename_suffix+".ptx"
                     )
         else:
             write_ptx(self.get_cl_context(), knl)
