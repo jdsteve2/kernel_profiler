@@ -30,3 +30,9 @@
 
 * **KernelStatOptions.MEM_BANDWIDTH**  
    Global memory bytes accessed per second.
+
+* **KernelStatOptions.GENERATED_CODE**  
+   Generated opencl code.
+
+* **KernelStatOptions.SAVE_PTX**  
+   Save PTX (Portable Thread eXecution) file.
