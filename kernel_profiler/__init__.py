@@ -137,15 +137,44 @@ class KernelProfiler(object):
         if ptx_filename_suffix is not None:
             self.ptx_filename_suffix = ptx_filename_suffix
 
-    def get_cl_context(self):
+    def get_cl_context(self, knl):
 
-        if self.platform_name is None or self.device_name is None:
-            ctx = cl.create_some_context()
+        if knl.target is not None and knl.target.device is not None:
+            # kernel has a device already, see if we can use it
+            knl_platform_name = knl.target.device.platform.name
+            knl_device_name = knl.target.device.name
+
+            # check for mismatch between platforms/devices
+            if (self.platform_name is not None
+                    and not self.platform_name in knl_platform_name) or (
+                    self.device_name is not None
+                    and not self.device_name in knl_device_name):
+                raise ValueError("kernel target platform %s and/or device %s do "
+                        "not match profiler platform %s and/or device %s."
+                        % (knl_platform_name, knl_device_name,
+                        self.platform_name, self.device_name))
+
+            cache_key = (knl_platform_name, knl_device_name, "ctx")
+            try:
+                return self.ctx_cache[cache_key]
+            except KeyError:
+                ctx = cl.Context([find_cl_device_candidates(
+                        knl_platform_name, knl_device_name)[-1]]
+                        )
+                self.ctx_cache[cache_key] = ctx
+                return ctx
+
+        elif self.platform_name is None or self.device_name is None:
+            # kernel does not have a pre-specified device,
+            # and profiler does not know platform+device
+            ctx = cl.create_some_context()  # interactive mode
             self.platform_name = ctx.devices[0].platform.name
             self.device_name = ctx.devices[0].name
             self.ctx_cache[(self.platform_name, self.device_name, "ctx")] = ctx
             return ctx
+
         else:
+            # profiler knows both platform and device already
             cache_key = (self.platform_name, self.device_name, "ctx")
             try:
                 return self.ctx_cache[cache_key]
@@ -166,7 +195,7 @@ class KernelProfiler(object):
             raise ValueError(
                     "Wall time requires dictionary of kernel parameters.")
 
-        ctx = self.get_cl_context()
+        ctx = self.get_cl_context(knl)
         queue = cl.CommandQueue(ctx)
 
         arg_arrays = create_rand_args(ctx, knl, param_dict)
@@ -198,14 +227,14 @@ class KernelProfiler(object):
                 raise ValueError("Cannot include kernel params "
                         "in ptx filename, no param dict passed.")
             write_ptx(
-                    self.get_cl_context(),
+                    self.get_cl_context(knl),
                     knl,
                     filename="ptx_"+knl.name+"_"+"_".join(
                         ["%s%d" % (p, v) for p, v in param_dict.items()]
                         )+self.ptx_filename_suffix+".ptx"
                     )
         else:
-            write_ptx(self.get_cl_context(), knl)
+            write_ptx(self.get_cl_context(knl), knl)
 
     def get_mem_access_stats(
                 self,
