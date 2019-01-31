@@ -371,8 +371,13 @@ class KernelProfiler(object):
 
         if kso.FLOP_RATE in stat_options:
             import numpy as np
+            # count madds as 2 ops
+            # (count all flops once and then count the madds again)
             float_ops = stats_found[kso.OP_MAP].filter_by(
                     dtype=[np.float32, np.float64]
+                    ).sum() + \
+                    stats_found[kso.OP_MAP].filter_by(
+                    dtype=[np.float32, np.float64], name=["madd"]
                     ).sum()
             if not self.evaluate_polys:
                 float_ops = float_ops.eval_with_dict(param_dict)
