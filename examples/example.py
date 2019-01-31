@@ -28,7 +28,9 @@ m = 2**11
 ell = 2**9
 param_dict = {'n': n, 'm': m, 'ell': ell}
 
-kp = KernelProfiler("NVIDIA", "GEFORCE",
+kp = KernelProfiler(
+        #"NVIDIA", "GEFORCE",
+        interactive=True,
         evaluate_polys = True,
         include_kernel_params_in_ptx_filename=True,
         )
@@ -43,6 +45,7 @@ stats = kp.profile(
             kso.FLOP_RATE,
             kso.MEM_BANDWIDTH,
             kso.SAVE_PTX,
+            kso.GENERATED_CODE,
         ],
         param_dict=param_dict,
         )
@@ -54,7 +57,7 @@ print(stats[kso.GRID_SIZES], "\n")
 print(stats[kso.FLOP_RATE], "\n")
 print(stats[kso.MEM_BANDWIDTH], "\n")
 
-kp.update_options(interactive=True)
+kp.update_options(evaluate_polys=False)
 
 interactive_stats = kp.profile(
         knl, [kso.WALL_TIME], param_dict=param_dict)

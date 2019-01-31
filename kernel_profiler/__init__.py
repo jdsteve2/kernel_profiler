@@ -56,6 +56,7 @@ class KernelStatOptions:
     FLOP_RATE = "flop_rate"
     MEM_BANDWIDTH = "mem_bandwidth"
     SAVE_PTX = "save_ptx"
+    GENERATED_CODE = "generated_code"
 
 
 class KernelProfiler(object):
@@ -353,5 +354,8 @@ class KernelProfiler(object):
 
         if kso.SAVE_PTX in stat_options:
             self.save_ptx(knl, param_dict)
+
+        if kso.GENERATED_CODE in stat_options:
+            stats_found[kso.GENERATED_CODE] = lp.generate_code_v2(knl).device_code()
 
         return stats_found
