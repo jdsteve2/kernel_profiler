@@ -373,17 +373,19 @@ class KernelProfiler(object):
             import numpy as np
             # count madds as 2 ops
             # (count all flops once and then count the madds again)
-            float_ops = stats_found[kso.OP_MAP].filter_by(
-                    dtype=[np.float32, np.float64]
-                    ).sum() + \
+            float_ops = self.subgroup_size*(
                     stats_found[kso.OP_MAP].filter_by(
-                    dtype=[np.float32, np.float64], name=["madd"]
-                    ).sum()
+                        dtype=[np.float32, np.float64]
+                        ).sum() +
+                    stats_found[kso.OP_MAP].filter_by(
+                        dtype=[np.float32, np.float64], name=["madd"]
+                        ).sum())
             if not self.evaluate_polys:
                 float_ops = float_ops.eval_with_dict(param_dict)
             stats_found[kso.FLOP_RATE] = float_ops/stats_found[kso.WALL_TIME]
 
         if kso.MEM_BANDWIDTH in stat_options:
+            # TODO check for stride 0 access, only counted once per subgroup
             data_moved_bytes = stats_found[kso.MEM_ACCESS_MAP].filter_by(
                     mtype=["global"]
                     ).to_bytes().sum()
