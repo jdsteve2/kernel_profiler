@@ -76,7 +76,6 @@ class KernelProfiler(object):
                 include_kernel_params_in_ptx_filename=False,
                 ptx_filename_suffix="",
                 ):
-        # TODO figure out how to let user specify target w/device
 
         self.ctx_cache = {}
         self.platform_name = platform_name
@@ -146,9 +145,9 @@ class KernelProfiler(object):
 
             # check for mismatch between platforms/devices
             if (self.platform_name is not None
-                    and not self.platform_name in knl_platform_name) or (
+                    and self.platform_name not in knl_platform_name) or (
                     self.device_name is not None
-                    and not self.device_name in knl_device_name):
+                    and self.device_name not in knl_device_name):
                 raise ValueError("kernel target platform %s and/or device %s do "
                         "not match profiler platform %s and/or device %s."
                         % (knl_platform_name, knl_device_name,
@@ -373,21 +372,45 @@ class KernelProfiler(object):
             import numpy as np
             # count madds as 2 ops
             # (count all flops once and then count the madds again)
+
+            # flops counted w/subgroup granularity
             float_ops = self.subgroup_size*(
                     stats_found[kso.OP_MAP].filter_by(
-                        dtype=[np.float32, np.float64]
+                        dtype=[np.float32, np.float64],
+                        count_granularity=[lp.CountGranularity.SUBGROUP],
                         ).sum() +
                     stats_found[kso.OP_MAP].filter_by(
-                        dtype=[np.float32, np.float64], name=["madd"]
+                        dtype=[np.float32, np.float64],
+                        count_granularity=[lp.CountGranularity.SUBGROUP],
+                        name=["madd"]
                         ).sum())
+
+            # flops counted w/workitem granularity (should be zero)
+            float_ops += stats_found[kso.OP_MAP].filter_by(
+                    dtype=[np.float32, np.float64],
+                    count_granularity=[lp.CountGranularity.WORKITEM],
+                    ).sum() + stats_found[kso.OP_MAP].filter_by(
+                    dtype=[np.float32, np.float64],
+                    count_granularity=[lp.CountGranularity.WORKITEM],
+                    name=["madd"]
+                    ).sum()
+            # TODO after ToCountMap gets version of sum that allows
+            # counting w/specified count granularity, update this
+
             if not self.evaluate_polys:
                 float_ops = float_ops.eval_with_dict(param_dict)
             stats_found[kso.FLOP_RATE] = float_ops/stats_found[kso.WALL_TIME]
 
         if kso.MEM_BANDWIDTH in stat_options:
-            # TODO check for stride 0 access, only counted once per subgroup
+            # mem access counted w/subgroup granularity
             data_moved_bytes = stats_found[kso.MEM_ACCESS_MAP].filter_by(
-                    mtype=["global"]
+                    mtype=["global"],
+                    count_granularity=[lp.CountGranularity.SUBGROUP],
+                    ).to_bytes().sum()*self.subgroup_size
+            # mem access counted w/workitem granularity
+            data_moved_bytes += stats_found[kso.MEM_ACCESS_MAP].filter_by(
+                    mtype=["global"],
+                    count_granularity=[lp.CountGranularity.WORKITEM],
                     ).to_bytes().sum()
             if not self.evaluate_polys:
                 data_moved_bytes = data_moved_bytes.eval_with_dict(param_dict)
