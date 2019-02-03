@@ -80,7 +80,7 @@ class KernelProfiler(object):
 
         # TODO create cache to store kernels (for executing w/different params)
         self.ctx_cache = {}
-        self.stats_mapping_cache = {}
+        self.stat_cache = {}
         self.platform_name = platform_name
         self.device_name = device_name
         self.interactive = interactive
@@ -238,7 +238,7 @@ class KernelProfiler(object):
         else:
             write_ptx(self.get_cl_context(knl), knl)
 
-    def get_cached_stats_mapping(
+    def get_cached_stats_map(
                 self,
                 knl,
                 stat_option,  # KernelStatOptions
@@ -248,7 +248,7 @@ class KernelProfiler(object):
         # TODO avoid multiple calls to prepare_for_caching()?
 
         try:
-            return self.stats_mapping_cache[cache_key]
+            return self.stat_cache[cache_key]
         except KeyError:
             if stat_option == KernelStatOptions.MEM_ACCESS_MAP:
                 from loopy.statistics import get_mem_access_map
@@ -272,16 +272,16 @@ class KernelProfiler(object):
                         knl,
                         subgroup_size=self.subgroup_size,
                         )
-            self.stats_mapping_cache[cache_key] = stats_map
+            self.stat_cache[cache_key] = stats_map
             return stats_map
 
-    def get_stats_mapping_and_evaluate_if_required(
+    def get_stats_map_and_evaluate_if_required(
                 self,
                 knl,
                 stat_option,  # KernelStatOptions
                 param_dict=None,
                 ):
-        stats_map = self.get_cached_stats_mapping(knl, stat_option)
+        stats_map = self.get_cached_stats_map(knl, stat_option)
         if self.evaluate_polys:
             if param_dict is None:
                 raise ValueError(
@@ -296,23 +296,32 @@ class KernelProfiler(object):
                 param_dict=None,
                 ):
 
-        global_size, local_size = knl.get_grid_size_upper_bounds()
+        cache_key = (prepare_for_caching(knl), KernelStatOptions.GRID_SIZES)
+        # TODO avoid multiple calls to prepare_for_caching()?
 
-        from islpy import PwQPolynomial
-        gsize_pwqs = []
-        lsize_pwqs = []
-        for gsize in global_size:
-            gsize_pwqs.append(PwQPolynomial.from_pw_aff(gsize))
-        for lsize in local_size:
-            lsize_pwqs.append(PwQPolynomial.from_pw_aff(lsize))
+        try:
+            grid_sizes = self.stat_cache[cache_key]
+        except KeyError:
+
+            global_size, local_size = knl.get_grid_size_upper_bounds()
+
+            from islpy import PwQPolynomial
+            gsize_pwqs = []
+            lsize_pwqs = []
+            for gsize in global_size:
+                gsize_pwqs.append(PwQPolynomial.from_pw_aff(gsize))
+            for lsize in local_size:
+                lsize_pwqs.append(PwQPolynomial.from_pw_aff(lsize))
+            grid_sizes = [gsize_pwqs, lsize_pwqs]
+            self.stat_cache[cache_key] = grid_sizes
 
         if self.evaluate_polys:
             if param_dict is None:
                 raise ValueError("Cannont evaluate polynomials without param_dict.")
-            return [g.eval_with_dict(param_dict) for g in gsize_pwqs], \
-                   [l.eval_with_dict(param_dict) for l in lsize_pwqs]
+            return [g.eval_with_dict(param_dict) for g in grid_sizes[0]], \
+                   [l.eval_with_dict(param_dict) for l in grid_sizes[1]]
         else:
-            return gsize_pwqs, lsize_pwqs
+            return grid_sizes
 
     def profile(
                 self,
@@ -335,7 +344,7 @@ class KernelProfiler(object):
         if kso.MEM_ACCESS_MAP in stat_options or \
                 kso.MEM_BANDWIDTH in stat_options:
             stats_found[kso.MEM_ACCESS_MAP] = \
-                    self.get_stats_mapping_and_evaluate_if_required(
+                    self.get_stats_map_and_evaluate_if_required(
                             knl,
                             kso.MEM_ACCESS_MAP,
                             param_dict=param_dict,
@@ -344,7 +353,7 @@ class KernelProfiler(object):
         if kso.OP_MAP in stat_options or \
                 kso.FLOP_RATE in stat_options:
             stats_found[kso.OP_MAP] = \
-                    self.get_stats_mapping_and_evaluate_if_required(
+                    self.get_stats_map_and_evaluate_if_required(
                             knl,
                             kso.OP_MAP,
                             param_dict=param_dict,
@@ -352,7 +361,7 @@ class KernelProfiler(object):
 
         if kso.SYNC_MAP in stat_options:
             stats_found[kso.SYNC_MAP] = \
-                    self.get_stats_mapping_and_evaluate_if_required(
+                    self.get_stats_map_and_evaluate_if_required(
                             knl,
                             kso.SYNC_MAP,
                             param_dict=param_dict,
