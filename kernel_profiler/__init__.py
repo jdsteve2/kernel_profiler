@@ -1,5 +1,6 @@
 import pyopencl as cl
 import loopy as lp
+from loopy.preprocess import prepare_for_caching
 
 
 def create_rand_args(ctx, knl, param_dict):
@@ -78,8 +79,8 @@ class KernelProfiler(object):
                 ):
 
         # TODO create cache to store kernels (for executing w/different params)
-        # TODO create cache to store stats mappings
         self.ctx_cache = {}
+        self.stats_mapping_cache = {}
         self.platform_name = platform_name
         self.device_name = device_name
         self.interactive = interactive
@@ -237,69 +238,57 @@ class KernelProfiler(object):
         else:
             write_ptx(self.get_cl_context(knl), knl)
 
-    def get_mem_access_stats(
+    def get_cached_stats_mapping(
                 self,
                 knl,
-                param_dict=None,
+                stat_option,  # KernelStatOptions
                 ):
 
-        from loopy.statistics import get_mem_access_map
+        cache_key = (prepare_for_caching(knl), stat_option)
+        # TODO avoid multiple calls to prepare_for_caching()?
 
-        mem_access_map = get_mem_access_map(
-                knl,
-                count_redundant_work=self.count_redundant_work,
-                subgroup_size=self.subgroup_size,
-                )
+        try:
+            return self.stats_mapping_cache[cache_key]
+        except KeyError:
+            if stat_option == KernelStatOptions.MEM_ACCESS_MAP:
+                from loopy.statistics import get_mem_access_map
+                stats_map = get_mem_access_map(
+                        knl,
+                        count_redundant_work=self.count_redundant_work,
+                        subgroup_size=self.subgroup_size,
+                        )
+            elif stat_option == KernelStatOptions.OP_MAP:
+                from loopy.statistics import get_op_map
+                stats_map = get_op_map(
+                        knl,
+                        count_redundant_work=self.count_redundant_work,
+                        count_within_subscripts=self.count_within_subscripts,
+                        subgroup_size=self.subgroup_size,
+                        count_madds=self.count_madds,
+                        )
+            elif stat_option == KernelStatOptions.SYNC_MAP:
+                from loopy.statistics import get_synchronization_map
+                stats_map = get_synchronization_map(
+                        knl,
+                        subgroup_size=self.subgroup_size,
+                        )
+            self.stats_mapping_cache[cache_key] = stats_map
+            return stats_map
 
-        if self.evaluate_polys:
-            if param_dict is None:
-                raise ValueError("Cannont evaluate polynomials without param_dict.")
-            return mem_access_map.eval(param_dict)
-        else:
-            return mem_access_map
-
-    def get_op_stats(
+    def get_stats_mapping_and_evaluate_if_required(
                 self,
                 knl,
+                stat_option,  # KernelStatOptions
                 param_dict=None,
                 ):
-
-        from loopy.statistics import get_op_map
-
-        op_map = get_op_map(
-            knl,
-            count_redundant_work=self.count_redundant_work,
-            count_within_subscripts=self.count_within_subscripts,
-            subgroup_size=self.subgroup_size,
-            count_madds=self.count_madds,
-            )
-
+        stats_map = self.get_cached_stats_mapping(knl, stat_option)
         if self.evaluate_polys:
             if param_dict is None:
-                raise ValueError("Cannont evaluate polynomials without param_dict.")
-            return op_map.eval(param_dict)
+                raise ValueError(
+                        "Cannot evaluate polynomials without param_dict.")
+            return stats_map.eval(param_dict)
         else:
-            return op_map
-
-    def get_synchronization_stats(
-                self,
-                knl,
-                param_dict=None,
-                ):
-
-        from loopy.statistics import get_synchronization_map
-
-        sync_map = get_synchronization_map(
-            knl,
-            subgroup_size=self.subgroup_size,
-            )
-
-        if self.evaluate_polys:
-            if param_dict is None:
-                raise ValueError("Cannont evaluate polynomials without param_dict.")
-            return sync_map.eval(param_dict)
-        else:
-            return sync_map
+            return stats_map
 
     def get_grid_sizes(
                 self,
@@ -345,24 +334,29 @@ class KernelProfiler(object):
 
         if kso.MEM_ACCESS_MAP in stat_options or \
                 kso.MEM_BANDWIDTH in stat_options:
-            stats_found[kso.MEM_ACCESS_MAP] = self.get_mem_access_stats(
-                    knl,
-                    param_dict=param_dict,
-                    )
+            stats_found[kso.MEM_ACCESS_MAP] = \
+                    self.get_stats_mapping_and_evaluate_if_required(
+                            knl,
+                            kso.MEM_ACCESS_MAP,
+                            param_dict=param_dict,
+                            )
 
         if kso.OP_MAP in stat_options or \
                 kso.FLOP_RATE in stat_options:
-            stats_found[kso.OP_MAP] = self.get_op_stats(
-                    knl,
-                    param_dict=param_dict,
-                    )
+            stats_found[kso.OP_MAP] = \
+                    self.get_stats_mapping_and_evaluate_if_required(
+                            knl,
+                            kso.OP_MAP,
+                            param_dict=param_dict,
+                            )
 
         if kso.SYNC_MAP in stat_options:
             stats_found[kso.SYNC_MAP] = \
-                    self.get_synchronization_stats(
-                    knl,
-                    param_dict=param_dict,
-                    )
+                    self.get_stats_mapping_and_evaluate_if_required(
+                            knl,
+                            kso.SYNC_MAP,
+                            param_dict=param_dict,
+                            )
 
         if kso.GRID_SIZES in stat_options:
             stats_found[kso.GRID_SIZES] = self.get_grid_sizes(
