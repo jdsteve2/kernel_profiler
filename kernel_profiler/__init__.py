@@ -410,10 +410,11 @@ class KernelProfiler(object):
             # first get footprint of data moved
             from loopy import gather_access_footprint_bytes
             footsize_bytes = 0
-            for access, count in stats_found[kso.MEM_ACCESS_MAP].items():
-                if access.mtype == "global":
-                    direction = "write" if access.direction == "store" else "read"
-                    footsize_bytes += gather_access_footprint_bytes(knl)[(access.variable, direction)].eval_with_dict(param_dict)
+            for access, count in stats_found[kso.MEM_ACCESS_MAP].filter_by(
+                        mtype=["global"]).items():
+                direction = "write" if access.direction == "store" else "read"
+                footsize_bytes += gather_access_footprint_bytes(knl)[
+                        (access.variable, direction)].eval_with_dict(param_dict)
 
             # mem access counted w/subgroup granularity
             data_moved_bytes = stats_found[kso.MEM_ACCESS_MAP].filter_by(
