@@ -77,6 +77,8 @@ class KernelProfiler(object):
                 ptx_filename_suffix="",
                 ):
 
+        # TODO create cache to store kernels (for executing w/different params)
+        # TODO create cache to store stats mappings
         self.ctx_cache = {}
         self.platform_name = platform_name
         self.device_name = device_name
@@ -402,6 +404,14 @@ class KernelProfiler(object):
             stats_found[kso.FLOP_RATE] = float_ops/stats_found[kso.WALL_TIME]
 
         if kso.MEM_BANDWIDTH in stat_options:
+            # first get footprint of data moved
+            from loopy import gather_access_footprint_bytes
+            footsize_bytes = 0
+            for access, count in stats_found[kso.MEM_ACCESS_MAP].items():
+                if access.mtype == "global":
+                    direction = "write" if access.direction == "store" else "read"
+                    footsize_bytes += gather_access_footprint_bytes(knl)[(access.variable, direction)].eval_with_dict(param_dict)
+
             # mem access counted w/subgroup granularity
             data_moved_bytes = stats_found[kso.MEM_ACCESS_MAP].filter_by(
                     mtype=["global"],
@@ -412,10 +422,14 @@ class KernelProfiler(object):
                     mtype=["global"],
                     count_granularity=[lp.CountGranularity.WORKITEM],
                     ).to_bytes().sum()
+            # if these polys have not alread been evaluated, evaluate them
             if not self.evaluate_polys:
                 data_moved_bytes = data_moved_bytes.eval_with_dict(param_dict)
-            stats_found[kso.MEM_BANDWIDTH] = \
-                    data_moved_bytes/stats_found[kso.WALL_TIME]
+
+            stats_found[kso.MEM_BANDWIDTH] = (
+                    data_moved_bytes/stats_found[kso.WALL_TIME],
+                    footsize_bytes/stats_found[kso.WALL_TIME]
+                    )
 
         if kso.SAVE_PTX in stat_options:
             self.save_ptx(knl, param_dict)

@@ -1,7 +1,7 @@
 import loopy as lp
 import numpy as np
 from kernel_profiler import KernelProfiler
-from kernel_profiler import KernelStatOptions as kso
+from kernel_profiler import KernelStatOptions as kso  # noqa
 
 
 knl = lp.make_kernel(
@@ -31,7 +31,7 @@ param_dict = {'n': n, 'm': m, 'ell': ell}
 kp = KernelProfiler(
         #"NVIDIA", "GEFORCE",
         #"NVIDIA", "K40C",
-        evaluate_polys = True,
+        evaluate_polys=True,
         include_kernel_params_in_ptx_filename=True,
         )
 stats = kp.profile(
@@ -55,7 +55,7 @@ print(lp.stringify_stats_mapping(stats[kso.OP_MAP]))
 print(lp.stringify_stats_mapping(stats[kso.SYNC_MAP]))
 print(stats[kso.GRID_SIZES], "\n")
 print(stats[kso.FLOP_RATE], "\n")
-print(stats[kso.MEM_BANDWIDTH], "\n")
+print(stats[kso.MEM_BANDWIDTH][0], stats[kso.MEM_BANDWIDTH][1], "\n")
 
 kp.update_options(evaluate_polys=False)
 
