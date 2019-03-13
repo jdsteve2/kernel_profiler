@@ -49,6 +49,9 @@ stats = kp.profile(
         ],
         param_dict=param_dict,
         )
+
+print(stats[kso.GENERATED_CODE])
+
 print("\nWall time:", stats[kso.WALL_TIME], "\n")
 print(lp.stringify_stats_mapping(stats[kso.MEM_ACCESS_MAP]))
 print(lp.stringify_stats_mapping(stats[kso.OP_MAP]))

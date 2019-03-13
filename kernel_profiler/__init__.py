@@ -58,6 +58,7 @@ class KernelStatOptions:
     MEM_BANDWIDTH = "mem_bandwidth"
     SAVE_PTX = "save_ptx"
     GENERATED_CODE = "generated_code"
+    # TODO mem access to footprint ratio
 
 
 class KernelProfiler(object):
